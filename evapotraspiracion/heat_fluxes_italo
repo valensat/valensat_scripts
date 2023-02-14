@@ -1,0 +1,464 @@
+import numpy as np
+from sklearn import linear_model
+from rasterio.plot import show
+
+#SEBAL and METRIC functions
+
+def sensible_heat(RN,LST_cold,LST_hot,LST, rah, ustar, air_dens, coldX, coldY, hotX, hotY,LET_cold):
+    # Monin-Obukhov length (m):
+    k_vk = 0.41
+    ro = 1.23  # [kg/m3] dry air density
+    Cp = 1004  # [JK/kg] air specific heat
+    RNHot = float(RN[[hotX], :][:, [hotY]])
+    rahHot = float(rah[[hotX], :][:, [hotY]])
+    RN_cold = float(RN[[coldX], :][:, [coldY]])
+    #G0_cold = float(G0[[coldX], :][:, [coldY]])
+    # Hhot_h = RNHot-GHot #hourly
+    Hhot = RNHot  # daily
+    if LET_cold == 0:
+        Hcold = 0
+    else:
+        Hcold = RN_cold - LET_cold
+    rahCold = float(rah[[coldX], :][:, [coldY]])
+    if str(rahHot == 'nan'):
+        rahHot = np.nanmean(rah)
+        if str(rahHot == 'nan'):
+            rahHot = 110  # aerodynamic resistance for dry soil Qiu et al 1998
+    dThot = (Hhot * rahHot) / (ro * Cp)  # dT daily first iteration
+    dTcold = (Hcold * rahCold) / (ro * Cp)  # dT daily first iteration
+    regr = linear_model.LinearRegression()
+    XLST = np.zeros((2, 1))
+    XLST[0] = LST_cold
+    XLST[1] = LST_hot
+    YdT_d = np.zeros((2, 1))
+    YdT_d[0] = dTcold
+    YdT_d[1] = dThot
+    regr.fit(XLST, YdT_d)
+    aD = regr.coef_
+    bD = regr.intercept_
+    dT = aD * LST + bD  # dT daily
+
+    h = air_dens * 1004 * dT / rah
+    L_MO = ((-1.0 * air_dens * 1004 * np.power(ustar, 3) * LST) /
+            (k_vk * 9.81 * h))
+    L_MO[L_MO < -1000] = -1000
+
+    # Stability correction for momentum, stable conditions (L_MO >= 0):
+    psi_200_stable = -0.05 * 200 / L_MO
+    # Stability correction for momentum and heat transport, unstable
+    # conditions (L_MO < 0):
+    x2 = np.power((1.0 - 16.0 * (2.0 / L_MO)), 0.25)  # x at 2m
+    x2[np.isnan(x2)] = 1
+    x200 = np.power(1.0 - 16.0 * (200 / L_MO), 0.25)  # x at 200m
+    x200[np.isnan(x200)] = 1
+    psi_h = 2 * np.log((1 + np.power(x2, 2)) / 2)
+    psi_m200 = (2 * np.log((1 + x200) / 2) + np.log((1 + np.power(x200, 2)) /
+                                                    2) - 2 * np.arctan(x200) + 0.5 * np.pi)
+    print('Sensible Heat ', np.nanpercentile(h, 50))
+    print('dT', np.nanpercentile(dT, 50))
+    return L_MO, psi_200_stable, psi_h, psi_m200, h, dT
+
+def Iterate_Friction_Velocity(RN,COLD,HOT,LST,rah,uF,ro,coldX,coldY,hotX,hotY,u_200, Surf_roughness, L, psi, psi_m200,
+                              psi_m200_stable,LET_cold):
+    """
+    Function to correct the windspeed and aerodynamic resistance for the iterative process the output can be used as the new input for this model
+    """
+    k_vk = 0.41
+    air_dens = 1.23
+    # Sensible heat 2 (Step 6)
+    # Corrected value for the friction velocity, unstable
+    ustar_corr_unstable = (k_vk * u_200 / (np.log(200.0 / Surf_roughness) -
+                                           psi_m200))
+    # Corrected value for the friction velocity, stable
+    ustar_corr_stable = (k_vk * u_200 / (np.log(200.0 / Surf_roughness) -
+                                         psi_m200_stable))
+    ustar_corr = np.where(L > 0.0, ustar_corr_stable, ustar_corr_unstable)
+    ustar_corr[ustar_corr < 0.02] = 0.02
+
+    rah_corr_unstable = (np.log(2.0 / 0.01) - psi) / (k_vk * ustar_corr)  # unstable
+    rah_corr_stable = (np.log(2.0 / 0.01) - 0.0) / (k_vk * ustar_corr)  # stable
+
+    L[np.isnan(L)] = -1000
+    rah_corr = np.where(L > 0.0, rah_corr_stable, rah_corr_unstable)
+    rah_corr[rah_corr > 477] = 477 #Jia references values
+    rah_corr[rah_corr < 110] = 110 #Qiu reference values
+    rah_corr[np.isnan(rah_corr)] = np.nanmean(rah_corr)
+
+    print('Aerodynamic resistance 10:', np.nanpercentile(rah_corr, 10))
+    print('Aerodynamic resistance 50:', np.nanpercentile(rah_corr, 50))
+    print('Aerodynamic resistance 90:', np.nanpercentile(rah_corr, 90))
+
+    L_corr, psi_m200_corr_stable, psi_corr, psi_m200_corr, h, dT = sensible_heat(RN, COLD, HOT, LST, rah_corr, ustar_corr, ro, coldX, coldY, hotX,
+                                                                  hotY,LET_cold)
+    print('Sensible Heat percentile 10:', np.nanpercentile(h, 10))
+    print('Sensible Heat percentile 50:', np.nanpercentile(h, 50))
+    print('Sensible Heat percentile 90:', np.nanpercentile(h, 90))
+    # return L_MO, psi_200_stable, psi_h, psi_m200, h, dT
+    return (L_corr, psi_corr, psi_m200_corr, psi_m200_corr_stable, h, ustar_corr, rah_corr, dT)
+
+
+#SEBS
+# SEBS EVAPOTRANSPIRATION
+# MOS STABILITY CORRECTION FUNCTIONS
+def PSIma(f, g):
+    a = 0.33
+    b = 0.41
+    pi = 3.141592654
+    pre_tangens = (np.arctan((2.0 * g - 1.0) / (3.0) ** (1. / 2.))) * pi / 180
+    # tangens = ifthenelse(tangens > pi/2.0, tangens - 2.0 * pi, tangens)
+    # Initial conditional mask
+    Mask_tangens1 = np.copy(pre_tangens)
+    Mask_tangens1[Mask_tangens1 > np.pi / 2.0] = -9999.0
+    Mask_tangens1[Mask_tangens1 != -9999.0] = 0
+    Mask_tangens1[Mask_tangens1 == -9999.0] = 1
+    tangens1 = np.copy(pre_tangens)
+    tangens1[tangens1 == -np.inf] = 0
+    tangens1[tangens1 == np.inf] = 0
+    tangens1 = tangens1 * Mask_tangens1
+    tangens1 = np.nan_to_num(tangens1)
+    # Second conditional mask
+    Mask_tangens2 = np.copy(pre_tangens)
+    Mask_tangens2[Mask_tangens2 > np.pi / 2.0] = -9999.0
+    Mask_tangens2[Mask_tangens2 != -9999.0] = 1
+    Mask_tangens2[Mask_tangens2 == -9999.0] = 0
+    tangens2 = np.copy(pre_tangens)
+    tangens2[tangens2 == -np.inf] = 0
+    tangens2[tangens2 == np.inf] = 0
+    tangens2 = tangens2 * Mask_tangens2
+    tangens2 = np.nan_to_num(tangens2)
+    # SUM CONDITIONAL
+    tangens = tangens1 + tangens2
+    PSIma = np.log(a + f) - 3.0 * b * f ** (1.0 / 3.0) + b * a ** (1.0 / 3.0) / 2.0 * np.log(
+        (1 + g) ** 2.0 / (1.0 - g + (g) ** 2)) + (3.0) ** (1. / 2.) * b * a ** (1.0 / 3.0) * tangens
+    return PSIma
+
+
+def PSIm_y(Y):
+    # Integrated stability correction function for momentum
+    # Inputs
+    # Y = -z/L, where z is the height, L the Obukhov length
+    # test values
+
+    # Constants (Brutsaert, 1999)
+    a = 0.33
+    b = 0.41
+    # m = 1.0
+    pi = 3.141592654
+
+    # Calculation
+    # //HK 040902
+    Y = abs(Y)  # abs(Y)
+    x = (Y / a) ** (1.0 / 3.0)
+    PSI0 = np.log(a) + (3.0) ** (1. / 2.) * b * a ** (1.0 / 3.0) * pi / 6.0
+    b_3 = b ** -3.0
+    # PSIm_y = ifthenelse(Y <= b_3, PSIma(Y, x) + PSI0, PSIma(b_3, ((b_3/a)**(1.0/3.0))) + PSI0)
+    # PSIm_y = ifthenelse(Y <= b_3, PSIma(Y, x) + PSI0, (1.0 / (PSIma(b_3, ((b_3/a)**(1.0/3.0))))) + PSI0)
+    # Initial conditional mask
+    Mask_PSIm_y1 = np.copy(Y)
+    Mask_PSIm_y1[Mask_PSIm_y1 <= b_3] = -9999.0
+    Mask_PSIm_y1[Mask_PSIm_y1 != -9999.0] = 0
+    Mask_PSIm_y1[Mask_PSIm_y1 == -9999.0] = 1
+    PSIm_y1 = PSIma(Y, x) + PSI0
+    PSIm_y1[PSIm_y1 == -np.inf] = 0
+    PSIm_y1[PSIm_y1 == np.inf] = 0
+    PSIm_y1 = PSIm_y1 * Mask_PSIm_y1
+    PSIm_y1 = np.nan_to_num(PSIm_y1)
+    # Second conditional mask
+    Mask_PSIm_y2 = np.copy(Y)
+    Mask_PSIm_y2[Mask_PSIm_y2 <= b_3] = -9999.0
+    Mask_PSIm_y2[Mask_PSIm_y2 != -9999.0] = 1
+    Mask_PSIm_y2[Mask_PSIm_y2 == -9999.0] = 0
+    PSIm_y2 = PSIma(b_3, ((b_3 / a) ** (1.0 / 3.0))) + PSI0
+    PSIm_y2 = PSIm_y2 * Mask_PSIm_y2
+    PSIm_y2 = np.nan_to_num(PSIm_y2)
+    # SUM CONDITIONAL
+    PSIm_y = PSIm_y1 + PSIm_y2
+
+    return PSIm_y
+
+
+def PSIh_y(Y):
+    # Integrated stability correction function for heat
+    # Inputs
+    # Y = -z/L, z is the height, L the Obukhov length
+    # constants (Brutsaert, 1999)
+    c = 0.33
+    d = 0.057
+    n = 0.78
+    # Calculation
+    Y = abs(Y)
+    PSIh_y = (1.0 - d) / n * np.log((c + Y ** n) / c)
+    return PSIh_y
+
+
+# BAS STABILITY CORRECTION FUNCTIONS
+def Bw(hi, L, z0):
+    # constants (Brutsaert, 1999)
+    alfa = 0.12
+    beta = 125.0
+
+    # calculations
+    B0 = (alfa / beta) * hi
+    B1 = -1.0 * z0 / L
+    B11 = -alfa * hi / L
+    B21 = hi / (beta * z0)
+    B22 = -beta * z0 / L
+    tempB11 = PSIm_y(B11)
+    tempB1 = PSIm_y(B1)
+    # B = ifthenelse(z0 < B0, -1.0 * np.log(alfa) + PSIm_y(B11) - PSIm_y(B1), np.log(B21) + PSIm_y(B22) - PSIm_y(B1))
+    # Initial conditional mask
+    Mask_B1 = np.copy(z0)
+    Mask_B1[Mask_B1 <= B0] = -9999.0
+    Mask_B1[Mask_B1 != -9999.0] = 0
+    Mask_B1[Mask_B1 == -9999.0] = 1
+    B_1 = -1.0 * np.log(alfa) + PSIm_y(B11) - PSIm_y(B1)
+    B_1[B_1 == -np.inf] = 0
+    B_1[B_1 == np.inf] = 0
+    B_1 = B_1 * Mask_B1
+    B_1 = np.nan_to_num(B_1)
+    # Second conditional mask
+    Mask_B2 = np.copy(z0)
+    Mask_B2[Mask_B2 <= B0] = -9999.0
+    Mask_B2[Mask_B2 != -9999.0] = 1
+    Mask_B2[Mask_B2 == -9999.0] = 0
+    B_2 = np.log(B21) + PSIm_y(B22) - PSIm_y(B1)
+    B_2[B_2 == -np.inf] = 0
+    B_2[B_2 == np.inf] = 0
+    B_2 = B_2 * Mask_B2
+    B_2 = np.nan_to_num(B_2)
+    # SUM CONDITIONAL
+    B = B_1 + B_2
+    # Bw = ifthenelse(B < 0.0, 0.0, B) # This results from unfortunate parameter combination!
+    Bw = np.copy(B)
+    Bw[Bw < 0.0] = 0  # This results from unfortunate parameter combination!
+
+    return Bw
+
+
+def Cw(hi, L, z0, z0h):
+    alfa = 0.12
+    beta = 125.0
+    C0 = (alfa / beta) * hi
+    # C1 = pcrumin(z0h) / L
+    z0h[z0h == -np.inf] = 9999
+    z0h[z0h == np.inf] = 9999
+    C1 = np.nanmin(z0h) / L
+    C11 = -alfa * hi / L
+    C21 = hi / (beta * z0)
+    C22 = -beta * z0 / L
+    # C = ifthenelse(z0 < C0, pcrumin(ln(alfa)) + PSIh_y(C11) - PSIh_y(C1), ln(C21) + PSIh_y(C22) - PSIh_y(C1))
+    # C = ifthenelse(z0 < C0, np.log(alfa) + PSIh_y(C11) - PSIh_y(C1), np.log(C21) + PSIh_y(C22) - PSIh_y(C1))
+    # Initial conditional mask
+    Mask_C1 = np.copy(z0)
+    Mask_C1[Mask_C1 <= C0] = -9999.0
+    Mask_C1[Mask_C1 != -9999.0] = 0
+    Mask_C1[Mask_C1 == -9999.0] = 1
+    C_1 = np.log(alfa) + PSIh_y(C11) - PSIh_y(C1)
+    C_1[C_1 == -np.inf] = 0
+    C_1[C_1 == np.inf] = 0
+    C_1 = C_1 * Mask_C1
+    C_1 = np.nan_to_num(C_1)
+    # Second conditional mask
+    Mask_C2 = np.copy(z0)
+    Mask_C2[Mask_C2 <= C0] = -9999.0
+    Mask_C2[Mask_C2 != -9999.0] = 1
+    Mask_C2[Mask_C2 == -9999.0] = 0
+    C_2 = np.log(C21) + PSIh_y(C22) - PSIh_y(C1)
+    C_2[C_2 == -np.inf] = 0
+    C_2[C_2 == np.inf] = 0
+    C_2 = C_2 * Mask_C2
+    C_2 = np.nan_to_num(C_2)
+    # SUM CONDITIONAL
+    C = C_1 + C_2
+    # Cw = ifthenelse(C < 0.0, 0.0, C) # This results from unfortunate parameter combination!
+    Cw = np.copy(C)
+    Cw[Cw < 0.0] = 0  # This results from unfortunate parameter combination!
+
+    return Cw
+
+
+def u_pbl(u_s, z_ms, z0m, z_pbl):  # wind speed, height of wind speed measurement, z0m, z_pbl
+    """Calculates Planetary Boundary Layer wind speed [m s-1] from Fcover"""
+    h = z0m / 0.136  # total height of vegetation (m)
+    d = 2.0 / 3.0 * h  # zero plane displacement (m)
+    u_c = np.log((z_pbl - d) / z0m) / np.log((z_ms - d) / z0m)
+    u_pbl = u_s * u_c
+    return u_pbl, d, h
+
+
+def z0h(KB_1, z0m):
+    """Calculates the scalar roughness height for heat transfer (z0h)
+    KB_1 Input KB_1 values
+    z0m Input scalar roughness height for momentum"""
+    z0h = z0m / np.exp(KB_1)
+    return z0h
+
+
+def KB_1(u, uF, Zom, Fc, LAI, TaK, pa, h):
+    """Initial determination of roughness length for heat transfer
+    #FRICTION VELOCITY IN CONDITION OF STABILITY"""
+    k = 0.41
+    Ct = 0.00625 * 2  # it asumes a medium value of 0.00625, and two because the sides of leaf, (Su, 2002)
+    Pr = 0.713  # Prandt Number
+    Cd = 0.2  # Drag coefficient of the foliage elements
+    hs = 5e-03
+    # uFi= (k*u)/np.log(2/Zom)
+    z = 2  # Height of wind measurement
+    # AN EXTENDED MODEL FOR DETERMINATION OF THE ROUGHNESS LENGTH FOR HEAT TRANSFER
+    z0 = 0.136 * h  # Brutsaert (1982)
+    u_h = u * np.log(2.446) / np.log((z - 0.667 * h) / z0)  # wind speed at canopy height
+    ust2u_h = 0.32 - 0.264 / np.exp(15.1 * Cd * LAI)  # wind speed friction at canopy height
+    nec = (Cd * LAI) / ((2 * (uF ** 2)) / u_h ** 2)  # Within-canopy wind profile extinction coefficient
+    Fs = 1 - Fc  # Fraction of Soil Cover
+
+    v = 1.327 * (10 ** -5) * (101.3 / pa) * ((TaK / 273.15) ** 1.81)  # kinematic viscosity of air, Su, 2002 based on Massman,1999
+
+    Re = (hs * uF) / v  # Su, 2002
+    Cst = (Pr ** (-2. / 3)) * (Re ** (-1. / 2))  # Su, 2002
+    kBs = 2.46 * ((Re) ** (1. / 4)) - np.log(7.4)  # Su, 2002
+    kB = ((k * Cd) / (4 * Ct * ust2u_h * (1 - np.exp((-nec / 2)))) * (Fc ** 2)) + (2 * Fc * Fs * ((k * ust2u_h * (Zom / h)) / Cst)) + (kBs * (Fs ** 2))  # B = Inverse Stanton number, a dimensionless heat transfer coefficient
+    show(kB)
+    return kB
+
+
+def FRUstar(z_pbl, u_pbl, hst, z0m, z0h, DEM, HR, Ta, Ts):
+    """Iteration to calculate RUstar OR FRICTION VELOCITY
+    z_pbl Input PBL depth [m]
+    u_pbl Input Wind speed PBL [m/s]
+    hst Input height of the ASL [m]
+    h Input height of vegetation
+    Air Temperature
+    Relative Humidity
+    Land Surface Temperature"""
+    print("Starting iterations to derive stability parameters...")
+    g=9.8
+    k=0.41
+    p_s = 101325  # Pa
+    z_pbl_A = z_pbl
+    alt_ms = 2  # height of measurement
+    d = z0m * 4.9
+    u_pbl_A = u_pbl
+    # h = z0m / 0.136
+    Rv = 461.05  # specific gas constant water vapour (J kg-1 K-1)
+    Rd = 287.04  # specific gas constant dry air (J kg-1 K-1)
+    Cp = 1005.0  # specific heat (J kg-1 K-1)
+    p_pbl_A = p_s * ((44331.0 - (DEM + z_pbl_A)) / (44331.0 - alt_ms)) ** (1.0 / 0.1903)
+
+    zd0 = z_pbl - d
+    ku = 0.41 * u_pbl_A
+    zdm = np.log(zd0 / z0m)
+    zdh = np.log(zd0 / z0h)
+    zdh[zdh == np.inf] = 375579840.0  # high resistance
+    zdh[np.isnan(zdh)] = 375579840
+    RUstar = ku / zdm
+
+    helpvar1 = DEM / 44331.0
+    helpvar2 = 1.0 - helpvar1
+    T0 = Ts / helpvar2 ** 1.5029
+    t_s = Ta
+    hr_s = HR
+    hr_pbl = hr_s / 100
+    Tcn = Ta - 273.15
+    esat = 611.0 * np.exp(17.502 * Tcn / (Tcn + 240.97))  # Pa
+    eact = hr_pbl * esat  # actual vapour pressure
+    ps = p_pbl_A
+    t_c = np.log((z_pbl - d) / z0h) / np.log((alt_ms - d) / z0h)
+    t_pbl_A = Ts * (1.0 - t_c) + t_s * t_c
+    t_pbl_A = t_pbl_A / (1.0 - DEM / 44331.0) ** 1.5029
+    t_pbl = t_pbl_A
+    # T_0pbl = 0.5 * (T0 + t_pbl_A)   # mean potential temperature
+    q_pbl_A = 5.0 / 8.0 * eact / p_pbl_A
+
+    p_pbl = p_pbl_A
+    q_pbl = q_pbl_A
+    eact = p_pbl * q_pbl * (Rv / Rd)  # actual vapour pressure
+
+    Theta_s = T0
+    Theta_v = Ts * (1.0 + 0.61 * q_pbl)  # surface virtual temperature
+    Theta_a = t_pbl * (101325 / p_pbl) ** 0.286
+    rhoa = ps / (Rd * Theta_v)  # surface air density (kg m-3)
+    rhoam = (ps / (Rd * Ts)) * (1.0 - 0.378 * eact / ps)  # moist air density (kg m-3)
+    rhoacp = rhoa * Cp  # specific air heat capacity (J K-1 mÂ­3)
+    T0ta = Theta_s - Theta_a
+    CH = T0ta * k * rhoacp
+
+    RH = CH * RUstar / zdh  # Initial sensible heat flux
+    RH0 = RH
+    Reps = 10.0
+    Isteps = 0
+    RHA = RH
+    RHB = RH
+    RH0A = RH0
+    RH0B = RH0
+    RUstarA = RUstar
+    RUstarB = RUstar
+    IstepsA = Isteps
+    IstepsB = Isteps
+    RepsA = Reps
+    RepsB = Reps
+    itNr = 100.0
+    itThreshold = 0.01
+    CL = np.nanmin(rhoam) * Cp * Theta_v / (k * g)  # Monin Obukhov Length without H and uF
+
+    while RepsA > itThreshold and IstepsA < itNr:
+        RLA = CL * RUstarA ** 3.0 / RHA
+        tempBw = Bw(z_pbl, RLA, z0m)
+        RUstarA = ku / (zdm - tempBw)
+        tempCw = Cw(z_pbl, RLA, z0m, z0h)
+        RHA = CH * RUstarA / (zdh - tempCw)
+        RepsA = np.nanmax(abs(RH0A - RHA))
+        # difa = abs(RH0A - RHA)
+        # Min = np.nanmin(difa)
+        # meandif = np.nanmean(difa)
+        RH0A = RHA
+        IstepsA = IstepsA + 1
+        percentage = (IstepsA / itNr) * 100
+        print("Iteration A:", int(percentage), "% completed\r")
+        print("it Threshold: " + str(RepsA))
+
+    while RepsB > itThreshold and IstepsB < itNr:
+        RLB = CL * RUstarB ** 3.0 / RHB
+        tempPSIm_y1 = PSIm_y(zd0 / RLB)
+        tempPSIm_y2 = PSIm_y(z0m / RLB)
+        RUstarB = ku / (zdm - tempPSIm_y1 + tempPSIm_y2)
+        tempPSIh_y1 = PSIh_y(zd0 / RLB)
+        tempPSIh_y2 = PSIh_y(z0h / RLB)
+        RHB = CH * RUstarB / (zdh - tempPSIh_y1 + tempPSIh_y2)
+        RepsB = np.nanmax(abs(RH0B - RHB))
+        # difb = abs(RH0B - RHB)
+        # meandif = np.nanmean(difb)
+        # Min = np.nanmin(difb)
+        RH0B = RHB
+        IstepsB = IstepsB + 1
+        percentage = (IstepsB / itNr) * 100
+        print("Iteration B:", int(percentage), "% completed\r")
+        print("it Threshold: " + str(RepsB))
+    print
+    MASKYRU1 = np.copy(z_pbl)
+    MASKYRU2 = np.copy(z_pbl)
+    MASKYRU1[MASKYRU1 >= hst] = 1
+    MASKYRU1[MASKYRU1 < hst] = 0
+    MASKYRU2[MASKYRU2 >= hst] = 0
+    MASKYRU2[MASKYRU2 < hst] = 1
+    RUstarA[RUstarA == -np.inf] = 0
+    RUstarA[RUstarA == np.inf] = 0
+    RUstarA1 = MASKYRU1 * RUstarA
+    RUstar[RUstar == -np.inf] = 0
+    RUstar[RUstar == np.inf] = 0
+    RUstarB1 = MASKYRU2 * RUstar
+    RUstar = RUstarA1 + RUstarB1
+    # RUstar = ifthenelse(z_pbl >= hst, RUstarA, RUstarB)
+    RLA[RLA == -np.inf] = 0
+    RLA[RLA == np.inf] = 0
+    RL1 = MASKYRU1 + RLA
+    RLB[RLB == -np.inf] = 0
+    RLB[RLB == np.inf] = 0
+    RL2 = MASKYRU2 + RLB
+    RL = RL1 + RL2
+    # RL = ifthenelse(z_pbl >= hst, RLA, RLB)
+
+    # dif = ifthenelse(z_pbl >= hst, difa, difb)
+    return RUstar, RL
+
+
+
