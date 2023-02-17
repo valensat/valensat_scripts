@@ -622,18 +622,17 @@ profile = {
     "crs": 'EPSG:32632',
 }
 
-# File path to save the GeoTIFF image
-file_path = "C:/Users/1/Desktop/NDVI.tif"
+
 
 # Save the arrays as GeoTIFF images
-# with rio.open("C:/Users/1/Desktop/NDVI_italy.tif", "w", **profile) as dst:
-#     dst.write(NDVI, 1)
+with rio.open("C:/Users/1/Desktop/ET_git/ET_NDVI_220713_0958.tif", "w", **profile) as dst:
+    dst.write(NDVI, 1)
 
-# with rio.open("C:/Users/1/Desktop/ALBEDO_italy.tif", "w", **profile) as dst:
-#     dst.write(albedo, 1)
+with rio.open("C:/Users/1/Desktop/ET_git/ET_ALBEDO_220713_0958.tif", "w", **profile) as dst:
+    dst.write(albedo, 1)
 
-# with rio.open("C:/Users/1/Desktop/EMISSIVITY_italy.tif", "w", **profile) as dst:
-#     dst.write(emiss, 1)
+with rio.open("C:/Users/1/Desktop/ET_git/ET_EMISS_220713_0958.tif", "w", **profile) as dst:
+    dst.write(emiss, 1)
 
 #********************************************************************* Opening LST images ********************************************************************
 #Open the LST image
