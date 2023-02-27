@@ -485,7 +485,7 @@ def FRUstar(z_pbl, u_pbl, hst, z0m, z0h, DEM, HR, Ta, Ts):
 #Open the Planet image (mosaic created with QGIS) (geotiff) --- Modena sud (is the station that contain diamante images and the EC station)
 #all the images are at 3 meter resolution and with CRS usgs 32632 - UTM 32N (the transformation has been done with QGIS)
 
-image =rio.open(r"C:\Users\1\Desktop\ET_SEBS\20220713_SR_Planet_mosaic_ModenaSud.tif")
+image =rio.open(r"C:\Users\1\Desktop\ET_SEBS\20220714_SR_Planet_mosaic_Modena_1108.tif")
 
 #naming the bands and converting to float64 values
 band1 = image.read(1)/(10000)
@@ -501,7 +501,7 @@ print(band1.shape)
 
 #open the mask image
 # the masks are orribles, I assume there are no clouds (the time pass of planet and of the airplane is the same more or less)
-# mask =rio.open(r"C:\Users\1\Desktop\ET_SEBS\OneDrive_2023-01-30\SMARTIES field campaign Burana - 2022\satellite data\planet\files\20220713_095824_68_2416_3B_udm2_clip.tif")
+# mask =rio.open(r"C:\Users\1\Desktop\ET_SEBS\OneDrive_2023-01-30\SMARTIES field campaign Burana - 2022\satellite data\planet\files\20220714_110824_68_2416_3B_udm2_clip.tif")
 # mask1 = mask.read(1) #Band 1: clear mask (a value of “1” indicates the pixel is clear, a value of “0” indicates that the pixel is not clear and is snow, cloud, shadow...)
 
 
@@ -562,6 +562,7 @@ albedo = (band1_msk*0.239855) + (band2_msk*0.00138392) + (band4_msk*0.0544263) +
 # Find all the elements equal to 0.00673963 (the old 0), and replace it with Nan value
 albedo[albedo == 0.00673963] = [np.nan]
 albedo = albedo
+# albedo = np.float32(albedo)
 
 # print('albedo :', albedo.dtype)
 # print("Mean albedo:", np.nanmean(albedo))
@@ -622,17 +623,15 @@ profile = {
     "crs": 'EPSG:32632',
 }
 
-
-
 # Save the arrays as GeoTIFF images
-with rio.open("C:/Users/1/Desktop/ET_git/ET_NDVI_220713_0958.tif", "w", **profile) as dst:
-    dst.write(NDVI, 1)
+# with rio.open("C:/Users/1/Desktop/ET_git/ET_NDVI_220714_1108.tif", "w", **profile) as dst:
+#     dst.write(NDVI, 1)
 
-with rio.open("C:/Users/1/Desktop/ET_git/ET_ALBEDO_220713_0958.tif", "w", **profile) as dst:
+with rio.open("C:/Users/1/Desktop/ET_git/ET_ALBEDO_220714_1108.tif", "w", **profile) as dst:
     dst.write(albedo, 1)
 
-with rio.open("C:/Users/1/Desktop/ET_git/ET_EMISS_220713_0958.tif", "w", **profile) as dst:
-    dst.write(emiss, 1)
+# with rio.open("C:/Users/1/Desktop/ET_git/ET_EMISS_220714_1108.tif", "w", **profile) as dst:
+#     dst.write(emiss, 1)
 
 #********************************************************************* Opening LST images ********************************************************************
 #Open the LST image

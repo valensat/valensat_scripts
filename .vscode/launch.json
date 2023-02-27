@@ -4,9 +4,8 @@
     // Para más información, visite: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-        {"name":"Python: archivo actual","type":"python","request":"launch","program":"${file}","console":"integratedTerminal","justMyCode":true},
         {
-            "name": "Python: archivo actual",
+            "name": "Python: actual",
             "type": "python",
             "request": "launch",
             "program": "${file}",

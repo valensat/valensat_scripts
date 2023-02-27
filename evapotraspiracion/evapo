@@ -1,0 +1,32 @@
+import numpy as np
+import openpyxl as xl
+import rasterio as rio
+from rasterio.plot import show
+from metpy.units import units
+import pandas as pd
+from matplotlib import pyplot
+import scipy
+from osgeo import gdal
+import math
+
+image =rio.open(r"C:\Users\1\Desktop\ET_results_SSEBI\ET_ist_220715_0726.tif").read(1)
+image[ image <= 0] = [np.nan]
+image = image
+
+image1 = rio.open(r"C:\Users\1\Desktop\ET_SEBS\20220715_SR_Planet_mosaic_Modena_0726.tif")
+
+profile = {
+    "driver": "GTiff",
+    "height": image1.shape[0],
+    "width": image1.shape[1],
+    "count": 1,
+    "dtype": np.float64,
+    "transform": image1.transform,
+    "crs": 'EPSG:32632',
+}
+
+# Save the arrays as GeoTIFF images
+with rio.open("C:/Users/1/Desktop/ET_results_SSEBI/corr/ET_ist_220715_0726.tif", "w", **profile) as dst:
+    dst.write(image, 1)
+    
+print('ok')
