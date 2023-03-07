@@ -6,8 +6,7 @@
 #in particolare VNP21.A2022194.0154.001.2022249143245.nc (dataset VIIRS VNP21, catalog?, date: 13.07.22, lat:48°46'02.64"N, long:1°56'43.80"E, nc data format)
 
 #Authenticate and initialize
-# api_key = 'AIzaSyCUxcmcRSHItYdxEyhs4Ak3tmUxT2WZlPo'
-# ee.Authenticate()
+
 
 import ee
 import geemap
@@ -25,6 +24,9 @@ from scipy import interpolate
 from pyproj import Proj
 import rasterio as rio
 
+
+api_key = 'AIzaSyCUxcmcRSHItYdxEyhs4Ak3tmUxT2WZlPo'
+ee.Authenticate()
 ee.Initialize()
 Map = geemap.Map()
 
