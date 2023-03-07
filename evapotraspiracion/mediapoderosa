@@ -1,0 +1,62 @@
+import numpy as np
+import rasterio as rio
+from rasterio.plot import show
+from matplotlib import pyplot
+
+
+def mediapoderosa(image_ET_ist_moltipl_F, image_F3m):
+    image =rio.open(image_ET_ist_moltipl_F).read(1)
+    image[image < 0] = [np.nan] #missing_value=-3.40282e+38
+    image = image
+
+    total_sum = np.nansum(image)
+    # pyplot.imshow(image, 'gray')
+    # pyplot.show()
+
+    ############################################################################################################################
+    image_F1 =rio.open(image_F3m).read(1)
+    image_F1[image_F1 < 0] = [np.nan] #missing_value=-3.40282e+38
+    image_F1 = image_F1
+
+    total_sum_F1 = np.nansum(image_F1)
+    # pyplot.imshow(image_F1, 'gray')
+    # pyplot.show()
+
+    #-------------------------------------------------------------------------------------------------------------------------------------
+    mediapesada = total_sum/total_sum_F1
+    print(mediapesada)
+    return mediapesada
+
+
+print('Media pesada 1:')
+media_1 = mediapoderosa('C:/Users/1/Desktop/ET_SEBS/Modena_validation/ET_ist_220713_0825_per_F1.tif', 'C:/Users/1/Desktop/ET_SEBS/OneDrive_2023-01-30/F1_3m.tif')
+print('Media pesada 2:')
+media_2 = mediapoderosa('C:/Users/1/Desktop/ET_SEBS/Modena_validation/ET_ist_220713_1204_per_F2.tif', 'C:/Users/1/Desktop/ET_SEBS/OneDrive_2023-01-30/F2_3m.tif')
+print('Media pesada 3:')
+media_3 = mediapoderosa('C:/Users/1/Desktop/ET_SEBS/Modena_validation/ET_ist_220713_1529_per_F3.tif', 'C:/Users/1/Desktop/ET_SEBS/OneDrive_2023-01-30/F3_3m.tif')
+print('Media pesada 4:')
+media_4 = mediapoderosa('C:/Users/1/Desktop/ET_SEBS/Modena_validation/ET_ist_220714_0804_per_F4.tif', 'C:/Users/1/Desktop/ET_SEBS/OneDrive_2023-01-30/F4_3m.tif')
+print('Media pesada 5:')
+media_5 = mediapoderosa('C:/Users/1/Desktop/ET_SEBS/Modena_validation/ET_ist_220714_1108_per_F5.tif', 'C:/Users/1/Desktop/ET_SEBS/OneDrive_2023-01-30/F5_3m.tif')
+print('Media pesada 6:')
+media_6 = mediapoderosa('C:/Users/1/Desktop/ET_SEBS/Modena_validation/ET_ist_220714_1509_per_F6.tif', 'C:/Users/1/Desktop/ET_SEBS/OneDrive_2023-01-30/F6_3m.tif')
+print('Media pesada 7:')
+media_7 = mediapoderosa('C:/Users/1/Desktop/ET_SEBS/Modena_validation/ET_ist_220715_0726_per_F7.tif', 'C:/Users/1/Desktop/ET_SEBS/OneDrive_2023-01-30/F7_3m.tif')
+
+
+print('Media pesada 5 drazen:')
+media_5 = mediapoderosa('C:/Users/1/Desktop/ET_SEBS/Modena_validation/ET_ist_220714_1108_per_F5_drazen.tif', 'C:/Users/1/Desktop/ET_SEBS/OneDrive_2023-01-30/F5_3m.tif')
+
+
+
+
+
+#entento hacerlo con solo la media ##############################################################################################
+# image_clip =rio.open(r"C:\Users\1\Desktop\ET_SEBS\Modena_validation\ET_ist_220713_0825_clip.tif").read(1)
+# image_clip[image_clip < 0] = [np.nan] #missing_value=-3.40282e+38
+# image_clip = image_clip
+
+# pyplot.imshow(image_clip, 'gray')
+# pyplot.show()
+
+# print("Mean clip:", np.nanmean(image_clip))

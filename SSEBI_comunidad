@@ -1,0 +1,135 @@
+######################################################################################################################################################################
+################################################################ S-SEBI COMUNIDAD ####################################################################################
+######################################################################################################################################################################
+
+#Provo ad accedere al dataset GEE e a scaricare immagini VIIRS e ERA5
+#in particolare VNP21.A2022194.0154.001.2022249143245.nc (dataset VIIRS VNP21, catalog?, date: 13.07.22, lat:48°46'02.64"N, long:1°56'43.80"E, nc data format)
+
+#Authenticate and initialize
+# api_key = 'AIzaSyCUxcmcRSHItYdxEyhs4Ak3tmUxT2WZlPo'
+# ee.Authenticate()
+
+import ee
+import geemap
+from osgeo import gdal, osr
+import netCDF4 as nc
+import datetime
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib import pyplot
+from matplotlib import cm
+from matplotlib.colors import Normalize
+from scipy.interpolate import interpn
+from sklearn.linear_model import LinearRegression
+from scipy import interpolate
+from pyproj import Proj
+import rasterio as rio
+
+ee.Initialize()
+Map = geemap.Map()
+
+#Open the collection VNP21A1D: VIIRS Day Land Surface Temperature and Emissivity Daily 1km 
+VIIRS_collection = ee.ImageCollection("NOAA/VIIRS/001/VNP21A1D")
+
+#Select period of interest 
+start_date = '2022-07-13'
+end_date = '2022-07-14'
+
+#Boundaries
+c_val = ee.FeatureCollection("projects/ee-valensatproject/assets/comunidad_valenciana").geometry()
+
+# Filtra la collezione
+VIIRS_filtered = VIIRS_collection.filterDate(start_date, end_date).filterBounds(c_val)
+
+# Select download name
+varNameVIIRS = ['VNP21', 'VNP09GA', 'ERA5']
+varName = ['ALBEDO', 'EMISS', 'LST', 'NDVI']
+varDate = start_date
+output_image_name = 'ET_' + varNameVIIRS[0] + '_' + varDate + '.tif'
+
+# Visualizza il numero di immagini nella collezione filtrata
+print("Numero di immagini nella collezione filtrata:", VIIRS_filtered.size().getInfo())
+
+crs_VIIRS = VIIRS_filtered.first().projection().getInfo()['crs']
+# print ('crs = ', crs_VIIRS) #SR-ORG:6974
+scale_VIIRS = VIIRS_filtered.first().projection().nominalScale().getInfo()
+# print('scale = ', scale_VIIRS) #926.625433055833 m 
+
+#Dowload the image --- I can skip this passage?
+# out_dir = r'C:\Users\1\Desktop\VIIRS_downloads'
+geemap.ee_export_image(VIIRS_filtered.first(), filename= output_image_name, scale=1000, crs='EPSG:4326', region=c_val)
+
+#Select LST band
+LSTband = rio.open('C://Users//1//Documents//GitHub//valensat_scripts//' + output_image_name)
+pyplot.imshow(LSTband, 'gray')
+pyplot.show()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# # Add Earth Engine dataset
+# image = ee.Image('USGS/SRTMGL1_003')
+# # print(image.dtype)
+# #AttributeError: 'Image' object has no attribute 'dtype'
+
+# # Set visualization parameters.
+# vis_params = {
+#     'min': 0,
+#     'max': 4000,
+#     'palette': ['006633', 'E5FFCC', '662A00', 'D8D8D8', 'F5F5F5'],
+# }
+
+# # Print the elevation of Mount Everest.
+# xy = ee.Geometry.Point([86.9250, 27.9881])
+# elev = image.sample(xy, 30).first().get('elevation').getInfo()
+# print('Mount Everest elevation (m):', elev)
+
+# # Add Earth Engine layers to Map
+# Map.addLayer(image, vis_params, 'DEM')
+# Map.addLayer(xy, {'color': 'red'}, 'Mount Everest')
+
+# # Center the map based on an Earth Engine object or coordinates (longitude, latitude)
+# # Map.centerObject(xy, 4)
+# Map.setCenter(86.9250, 27.9881, 4)
+
+# Map.addLayerControl()
+# # Map
+# display(Map)
+
+
+
+
+
+# Definisci i prodotti di interesse
+prodotti = [
+    'VIIRS_NPP_LST_and_Emissivity_6-Min_L2_Swath_750m',
+    'VIIRS_NPP_Surface_Reflectance_Daily_L2G_Global_1km_and_500m_SIN_Grid'
+]
+

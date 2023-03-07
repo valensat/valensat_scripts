@@ -1,3 +1,6 @@
+######################################################################################################################################################################
+################################################################ S-SEBI ITALIA #######################################################################################
+######################################################################################################################################################################
 
 from osgeo import gdal, osr
 import netCDF4 as nc
@@ -12,10 +15,97 @@ from scipy import interpolate
 from pyproj import Proj
 import rasterio as rio
 
-varDir = 'C:\\Users\\1\\Desktop\\ET_git\\'
+#Open the Planet image (geotiff)
+#all the images are at 3 meter resolution and with CRS usgs 32632 - UTM 32N (the transformation has been done with QGIS)
+
+image =rio.open(r"C:\Users\1\Desktop\ET_SEBS\Concordia_data\20220715_SR_Planet_mosaic_Concordia_0748.tif")
+
+#naming the bands and converting to float64 values
+band1 = image.read(1)/(10000)
+band2 = image.read(2)/(10000)
+band3 = image.read(3)/(10000)
+band4 = image.read(4)/(10000)
+band5 = image.read(5)/(10000)
+band6 = image.read(6)/(10000)
+band7 = image.read(7)/(10000)
+band8 = image.read(8)/(10000)
+#print the shape
+print(band1.shape)
+
+#create a function to apply the mask to the bands and replace it
+def apply_mask_and_replace(band, mask):
+    band_masked = band * mask
+    return band_masked
+
+#NDVI calculation = (NIR-RED)/(NIR + RED); with NIR = band8 and RED = band6 for Planet images
+NDVI = (band8 - band6)/(band8 + band6)
+
+# Create a binary water mask with NDVI (NDVI>0)
+water_mask = NDVI > 0
+water_mask = water_mask.astype(int) # Convert the mask to an integer array (water = 0, good values = 1)
+
+#Apply the mask to the bands
+band1_msk = apply_mask_and_replace(band1, water_mask)
+band2_msk = apply_mask_and_replace(band2, water_mask)
+band3_msk = apply_mask_and_replace(band3, water_mask)
+band4_msk = apply_mask_and_replace(band4, water_mask)
+band5_msk = apply_mask_and_replace(band5, water_mask)
+band6_msk = apply_mask_and_replace(band6, water_mask)
+band7_msk = apply_mask_and_replace(band7, water_mask)
+band8_msk = apply_mask_and_replace(band8, water_mask)
+
+#Now I calculate albedo and emissivity
+#ALBEDO
+#Formula de Drazen: Este es el resultado del test: bias, standard deviation y RMSE   -0.000433150   0.00310082   0.00313092
+#b1=442.5, b2=490, b3=560, b4=665, b8a=865
+#albedoS2 = (b1*0.239855) + (b2*0.00138392) + (b3*0.0544263) + (b4*0.359608) + (b8a*0.313689) +0.00673963
+albedo = (band1_msk*0.239855) + (band2_msk*0.00138392) + (band4_msk*0.0544263) + (band6_msk*0.359608) + (band8_msk*0.313689) +0.00673963
+albedo[albedo == 0.00673963] = [np.nan]
+albedo = albedo
+
+#EMISSIVITY (Sobrino, 2008)
+# NDVI_soil = 0.2
+# NDVI_veg = 0.8
+fvc = ((NDVI - 0.2) / (0.8 - 0.2)) ** 2  # Fraction of Vegetation Cover
+
+fvc[fvc > 1] = [1]
+fvc = fvc
+
+fvc[fvc < 0] = [0]
+fvc = fvc
+
+emiss = (0.971 *(1-fvc)) + (0.982*fvc) #It have to be included between 0 (white body) and 1(black body)
+
+#SAVE THE IMAGES
+# Profile information for the GeoTIFF image
+profile = {
+    "driver": "GTiff",
+    "height": image.shape[0],
+    "width": image.shape[1],
+    "count": 1,
+    "dtype": np.float64,
+    "transform": image.transform,
+    "crs": 'EPSG:32632',
+}
+
+# Save the arrays as GeoTIFF images
+with rio.open(r"C:/Users/1/Desktop/ET_SEBS/Concordia_data/ET_NDVI_220715_0748.tif", "w", **profile) as dst:
+    dst.write(NDVI, 1)
+
+with rio.open(r"C:/Users/1/Desktop/ET_SEBS/Concordia_data/ET_ALBEDO_220715_0748.tif", "w", **profile) as dst:
+    dst.write(albedo, 1)
+    
+with rio.open(r"C:/Users/1/Desktop/ET_SEBS/Concordia_data/ET_EMISS_220715_0748.tif", "w", **profile) as dst:
+    dst.write(emiss, 1)
+
+
+###############################################################################################################################################################
+##################################################################### Apply S-SEBI ############################################################################
+
+varDir = 'C:\\Users\\1\\Desktop\\ET_SEBS\\Concordia_data\\'
 varName = ['ALBEDO', 'EMISS', 'LST', 'NDVI']
 
-era5path = 'C:\\Users\\1\\Desktop\\ET_git\\'
+era5path = 'C:\\Users\\1\\Desktop\\ET_SEBS\\Concordia_data\\'
 
 albedoRange = [0.003, 0.5]
 # lstRange = [275., 330.]
@@ -39,10 +129,10 @@ class MoreraEvapoTranspiration:
         self.verbose = verbose
 
     def run(self):
-        overpassTime = self.overpass_hour('ET_' + varName[0] + '_220715_0726')
+        overpassTime = self.overpass_hour('ET_' + varName[0] + '_220715_0748')
         print('{0} -> Processing Evapotranspiration for {1}...'. format(self.now(), overpassTime))
 
-        NDV, xsize, ysize, GeoT, Projection, DataType = self.GetGeoInfo(self.varDir + 'ET_' + varName[0] + '_220715_0726' + '.tif')
+        NDV, xsize, ysize, GeoT, Projection, DataType = self.GetGeoInfo(self.varDir + 'ET_' + varName[0] + '_220715_0748' + '.tif')
         print(GeoT, Projection)
         # https://gdal.org/tutorials/raster_api_tut.html
         x0 = GeoT[0]
@@ -50,28 +140,28 @@ class MoreraEvapoTranspiration:
         xstep = GeoT[1]
         ystep = GeoT[5]
 
-        alb = self.read_variable('ET_' + varName[0] + '_220715_0726')
+        alb = self.read_variable('ET_' + varName[0] + '_220715_0748')
         # print(alb.shape)
-        emi = self.read_variable('ET_' + varName[1] + '_220715_0726')
-        lst = self.read_variable('ET_' + varName[2] + '_220715_0726')
-        ndvi = self.read_variable('ET_' + varName[3] + '_220715_0726')
+        emi = self.read_variable('ET_' + varName[1] + '_220715_0748')
+        lst = self.read_variable('ET_' + varName[2] + '_220715_0748')
+        ndvi = self.read_variable('ET_' + varName[3] + '_220715_0748')
         cloudMask = self.mask_clouds(alb, lst)
         Rup, Rsol, Ldown, time, lonsurf, latsurf = self.retrieve_rai(era5path, overpassTime, Projection)
         LEmod, Hmod = self.SSEBIparams(alb, lst, cloudMask, percH, percLE, percA, SSEBInpts, graph)
         ETd, Lfnet, Rnet, G, ETi, Hi = self.estimate_ET(alb, lst, ndvi, emi, cloudMask, Rup, Rsol, Ldown, time, lonsurf, latsurf, LEmod, Hmod, overpassTime, xstep, ystep, x0, y0)
-        # ETdName = self.CreateGeoTiff(self.varDir+'ET_ETd_220715_0726', ETd, gdal.GetDriverByName('GTiff'), 0.,
+        # ETdName = self.CreateGeoTiff(self.varDir+'ET_ETd_220715_0748', ETd, gdal.GetDriverByName('GTiff'), 0.,
         #               xsize, ysize, GeoT, Projection, DataType)
-#        LfnetdName = self.CreateGeoTiff(self.varDir+'ET_Lfnet_220715_0726', Lfnet, gdal.GetDriverByName('GTiff'), 0.,
-#                      xsize, ysize, GeoT, Projection, DataType)
-#        RnetName = self.CreateGeoTiff(self.varDir+'ET_Rnet_220715_0726', Rnet, gdal.GetDriverByName('GTiff'), 0.,
-#                      xsize, ysize, GeoT, Projection, DataType)
-#        GName = self.CreateGeoTiff(self.varDir+'ET_G_220715_0726', G, gdal.GetDriverByName('GTiff'), 0.,
-#                      xsize, ysize, GeoT, Projection, DataType)
-#        ETiName = self.CreateGeoTiff(self.varDir+'ET_ETi_220715_0726', ETi, gdal.GetDriverByName('GTiff'), 0.,
-#                      xsize, ysize, GeoT, Projection, DataType)
-#        HiName = self.CreateGeoTiff(self.varDir+'ET_Hi_220715_0726', Hi, gdal.GetDriverByName('GTiff'), 0.,
-#                      xsize, ysize, GeoT, Projection, DataType)
-        if self.verbose: print('     {0} -> Evapotranspiration estimation competed.'.format(self.now()))
+        # LfnetdName = self.CreateGeoTiff(self.varDir+'ET_Lfnet_220715_0748', Lfnet, gdal.GetDriverByName('GTiff'), 0.,
+        #              xsize, ysize, GeoT, Projection, DataType)
+        # RnetName = self.CreateGeoTiff(self.varDir+'ET_Rnet_220715_0748', Rnet, gdal.GetDriverByName('GTiff'), 0.,
+        #              xsize, ysize, GeoT, Projection, DataType)
+        # GName = self.CreateGeoTiff(self.varDir+'ET_G_220715_0748', G, gdal.GetDriverByName('GTiff'), 0.,
+        #              xsize, ysize, GeoT, Projection, DataType)
+        # ETiName = self.CreateGeoTiff(self.varDir+'ET_ETi_220715_0748', ETi, gdal.GetDriverByName('GTiff'), 0.,
+        #              xsize, ysize, GeoT, Projection, DataType)
+        # HiName = self.CreateGeoTiff(self.varDir+'ET_Hi_220715_0748', Hi, gdal.GetDriverByName('GTiff'), 0.,
+        #              xsize, ysize, GeoT, Projection, DataType)
+        # if self.verbose: print('     {0} -> Evapotranspiration estimation competed.'.format(self.now()))
 
     def now(self):
         now = datetime.datetime.now()
@@ -132,11 +222,11 @@ class MoreraEvapoTranspiration:
 
     def convert_accumulated_to_instantaneous(self, var):
         # var2 = np.zeros((48, 2, 2), dtype=float)
-        var2 = np.zeros((48, 11, 11), dtype=float)
+        var2 = np.zeros((24, 21, 21), dtype=float)
         var2[1, :, :] = var[1, :, :]
         var2[2:24, :, :] = var[2:24, :, :] - var[1:23, :, :]
-        var2[25, :, :] = var[25, :, :]
-        var2[26:47, :, :] = var[26:47, :, :] - var[25:46, :, :]
+        # var2[25, :, :] = var[25, :, :]
+        # var2[26:47, :, :] = var[26:47, :, :] - var[25:46, :, :]
         return var2
 
     def retrieve_rai(self, era5path, overpass, Projection):
@@ -258,7 +348,7 @@ class MoreraEvapoTranspiration:
             plt.plot((meanAlb, meanAlb), (H, LE), 'k-')
             plt.xlabel('Albedo')
             plt.ylabel('LST (in K)')
-            plt.savefig(varDir + "\\LST-ALB-graph.jpg", dpi=300, transparent=True, bbox_inches='tight')
+            plt.savefig(varDir + "LST-ALB-graph.jpg", dpi=300, transparent=True, bbox_inches='tight')
             plt.show()
             plt.close()
 
@@ -327,6 +417,10 @@ class MoreraEvapoTranspiration:
         Evapo[bad] = 0.
         Hlat[bad] = 0.
         Lfraccion[bad] = 0.
+        
+        #elimino i valori negativi di evapo
+        Evapo[ Evapo <= 0] = [np.nan]
+        Evapo = Evapo
 
         Rnetd = np.multiply((1-alb), RsoldIm) - np.multiply(RupdIm, emi) + np.multiply(LdowndIm, emi)
         Cdi = np.divide(Rnetd, Rnet)
@@ -339,7 +433,7 @@ class MoreraEvapoTranspiration:
         pos = fig.add_axes([0.85, 0.1, 0.02, 0.78])
         fig.colorbar(im, cax=pos)
         plt.show()
-        # fig.savefig(self.varDir + "\\ETist_220715_0726.jpg", dpi=300, transparent=True, bbox_inches='tight')
+        # fig.savefig(self.varDir + "\\ETist_220715_0748.jpg", dpi=300, transparent=True, bbox_inches='tight')
         plt.close
 
         fig = plt.figure()
@@ -348,10 +442,10 @@ class MoreraEvapoTranspiration:
         pos = fig.add_axes([0.85, 0.1, 0.02, 0.78])
         fig.colorbar(im, cax=pos)
         plt.show()
-        # fig.savefig(self.varDir + "\\ETd_220715_0726.jpg", dpi=300, transparent=True, bbox_inches='tight')
+        # fig.savefig(self.varDir + "\\ETd_220715_0748.jpg", dpi=300, transparent=True, bbox_inches='tight')
         plt.close
         
-        image = rio.open(r"C:\Users\1\Desktop\ET_SEBS\20220715_SR_Planet_mosaic_Modena_0726.tif")
+        image = rio.open(r"C:\Users\1\Desktop\ET_SEBS\Concordia_data\20220715_SR_Planet_mosaic_Concordia_0748.tif")
         
         profile = {
             "driver": "GTiff",
@@ -364,7 +458,16 @@ class MoreraEvapoTranspiration:
         }       
 
         # Save the arrays as GeoTIFF images
-        with rio.open("C:/Users/1/Desktop/ET_git/ET_ist_220715_0726.tif", "w", **profile) as dst:
+        # with rio.open(r"C:/Users/1/Desktop/ET_git/ET_Rnet_220715_0748.tif", "w", **profile) as dst:
+        #     dst.write(Rnet, 1)
+            
+        # with rio.open(r"C:/Users/1/Desktop/ET_git/ET_H_220715_0748.tif", "w", **profile) as dst:
+        #     dst.write(Hlat, 1)  
+        
+        # with rio.open(r"C:/Users/1/Desktop/ET_git/ET_G_220715_0748.tif", "w", **profile) as dst:
+        #     dst.write(G, 1)
+        
+        with rio.open(r"C:\Users\1\Desktop\ET_SEBS\Concordia_data\ET_ist_220715_0748.tif", "w", **profile) as dst:
             dst.write(Evapo, 1)
             
             
