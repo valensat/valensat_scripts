@@ -1,0 +1,66 @@
+##################################################################################################################################################################
+############################################################ AREA QUEMADA Y SEVERIDAD ############################################################################
+################################################################### RAFA METHOD ##################################################################################
+
+# Voy a conectarme con la API Copernicus open hub para obtener imagenes sentinel 2
+
+from sentinelsat import SentinelAPI, read_geojson, geojson_to_wkt
+import rasterio as rio
+import geopandas as gpd
+from shapely.geometry import Polygon
+import pyproj
+import io
+
+
+# Effettuo l'accesso
+api = SentinelAPI('valensatproject', 'valensatmola', 'https://scihub.copernicus.eu/dhus')
+
+##################################################### Calcolo i confini della comunità valenciana ##################################################################
+
+# # Apri il file shapefile della comunità valenciana per calcolare i confini
+# shp_file = gpd.read_file("C:\\Users\\1\\Desktop\\QGIS\\Comunidad_valenciana\\Comunidad_valenciana\\comunidad_valenciana.shp")
+# # Estrai il footprint
+# footprint = shp_file.total_bounds
+# # definisci il sistema di coordinate di partenza (UTM zone 30N)
+# source_crs = pyproj.CRS("EPSG:32630")
+# # definisci il sistema di coordinate di destinazione (WGS84)
+# target_crs = pyproj.CRS("EPSG:4326")
+# # crea un trasformatore di coordinate
+# transformer = pyproj.Transformer.from_crs(source_crs, target_crs)
+# # definisci le coordinate del tuo poligono nel sistema di partenza (il footprint)
+# coords = [(626576.38880333, 4190827.13007516), 
+#           (815520.45009149, 4190827.13007516), 
+#           (815520.45009149, 4519161.34880449), 
+#           (626576.38880333, 4519161.34880449)]
+# # converte le coordinate nel sistema di destinazione
+# lon_lat_coords = [transformer.transform(x, y) for x, y in coords]
+# # crea un poligono utilizzando le coordinate convertite
+# polygon = Polygon(lon_lat_coords)
+# # converte il poligono in una stringa WKT
+# wkt = polygon.wkt
+# print(wkt)
+
+
+# Questo è il poligono
+polygon = Polygon([(37.85612218784873, -1.5611559646802804), 
+                   (37.81034723449821, 0.5839392009811858), 
+                   (40.76289036774515, 0.737901505958187), 
+                   (40.81371231855407, -1.4992003756556747), 
+                   (37.85612218784873, -1.5611559646802804)])
+
+# salva la stringa WKT in un file di testo
+with io.open("poligono.wkt", "w", encoding="utf-8") as file:
+    file.write(polygon.wkt)
+
+
+# Query products
+products = api.query(polygon.wkt, date=('20230404', '20230324'), platformname='Sentinel-2', processinglevel='Level-2A')
+print(polygon.wkt)
+
+api.download_all(products)
+
+# import rasterio
+
+# with rasterio.open('path/to/tiff/file') as src:
+#     data = src.read()
+#     profile = src.profile
