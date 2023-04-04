@@ -57,8 +57,8 @@ Emissivity_band = VIIRS_VNP21A1D.first().select(['Emis_15', 'Emis_16']).reduce(e
 #Select LST band
 LST = rio.open('C://Users//1//Documents//GitHub//valensat_scripts//' + 'ET_' + varNameVIIRS[0] + '_' + varDate + '_' + varProduct[0] + '.tif').read(1)
 
-# plt.imshow(LST, 'gray')
-# plt.show()
+plt.imshow(LST, 'gray')
+plt.show()
 
 # print("Mean LST:", np.nanmean(LST))
 # print("Max LST:", np.nanmax(LST))
@@ -164,4 +164,4 @@ albedo = albedo
 
 
 ####################################### Open the collection VNP09GA: VIIRS Surface Reflectance Daily 500m and 1km ##############################################################
-#------------------------------------------------------------------ Extract ERA5 data -------------------------------------------------------------------------------------------
+#------------------------------------------------------------------ Extract ERA5 data ------------------------------------------------------------------------------------------
