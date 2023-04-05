@@ -2,7 +2,7 @@
 ############################################################ AREA QUEMADA Y SEVERIDAD ############################################################################
 ################################################################### RAFA METHOD ##################################################################################
 
-# Voy a conectarme con la API Copernicus open hub para obtener imagenes sentinel 2
+# Voy a conectarme con la API Copernicus open hub para obtener imagenes sentinel 2 y 3
 
 from sentinelsat import SentinelAPI, read_geojson, geojson_to_wkt
 import rasterio as rio
@@ -10,10 +10,11 @@ import geopandas as gpd
 from shapely.geometry import Polygon
 import pyproj
 import io
+from datetime import date
 
 
-# Effettuo l'accesso
-api = SentinelAPI('valensatproject', 'valensatmola', 'https://scihub.copernicus.eu/dhus')
+# Effettuo l'accesso all'open hub di copernicus
+api = SentinelAPI('valensatproject', 'valensatmola', 'https://apihub.copernicus.eu/apihub')
 
 ##################################################### Calcolo i confini della comunità valenciana ##################################################################
 
@@ -41,26 +42,101 @@ api = SentinelAPI('valensatproject', 'valensatmola', 'https://scihub.copernicus.
 # print(wkt)
 
 
-# Questo è il poligono
-polygon = Polygon([(37.85612218784873, -1.5611559646802804), 
-                   (37.81034723449821, 0.5839392009811858), 
-                   (40.76289036774515, 0.737901505958187), 
-                   (40.81371231855407, -1.4992003756556747), 
-                   (37.85612218784873, -1.5611559646802804)])
+# api.download(e4ebabd3-4528-4d4f-88e6-c55017ea1f55)
 
-# salva la stringa WKT in un file di testo
-with io.open("poligono.wkt", "w", encoding="utf-8") as file:
-    file.write(polygon.wkt)
+# Questo è il poligono della comunità valenciana
+polygon = Polygon([(-1.5611559646802804, 37.85612218784873),
+                   (0.5839392009811858, 37.81034723449821), 
+                   (0.737901505958187, 40.76289036774515), 
+                   (-1.4992003756556747, 40.81371231855407),
+                   (-1.5611559646802804, 37.85612218784873)])
+
+# Montanejos polygon
+Montanejos = Polygon([(-0.712371, 40.134717),
+                   (-0.527664, 40.133142), 
+                   (-0.521827, 40.019654), 
+                   (-0.632350, 40.065171),
+                   (-0.712371, 40.134717)])
+
+# Data query
+pre_fire_products = api.query(Montanejos.wkt,
+                     date=('20230306', '20230316'),
+                     platformname='Sentinel-2',
+                     producttype='S2MSI2A')  #Level 2a
+                    #  filename='*T30SYJ*') #numero quadricola = Luchente
+
+post_fire_products = api.query(Montanejos.wkt,
+                     date=('20230326', '20230401'),
+                     platformname='Sentinel-2',
+                     producttype='S2MSI2A')  #Level 2a
+                    #  filename='*T30SYJ*') #numero quadricola = Luchente
 
 
-# Query products
-products = api.query(polygon.wkt, date=('20230404', '20230324'), platformname='Sentinel-2', processinglevel='Level-2A')
-print(polygon.wkt)
+# Visualizza informazioni sui prodotti scaricati
+print(f'Trovati {len(pre_fire_products)} pre_fire_products:')
+df = api.to_dataframe(pre_fire_products)
+print(df[['title']]) #'size'
 
-api.download_all(products)
+print(f'Trovati {len(post_fire_products)} post_fire_products:')
+df = api.to_dataframe(post_fire_products)
+print(df[['title']]) #'size'
+
+import os
+
+# Download images and save it in the correct folder
+# if not os.path.exists('pre_fire'):
+#     os.makedirs('pre_fire')
+# api.download_all(pre_fire_products, directory_path='pre_fire')
+
+
+
+#Visualizzo le immagini con rasterio, dopo di che dovrei lavorarci sopra come se fossere nunpy array, nella nube
+# import rasterio as rio
+# import matplotlib.pyplot as plt
+
+# first_key = next(iter(pre_fire_products))
+# first_product = pre_fire_products[first_key]
+# image = rio.open(first_product)
+# plt.imshow(image)
+# plt.show()
+
+
+
+
+
+
+
+
+
+
 
 # import rasterio
+# import numpy as np
 
-# with rasterio.open('path/to/tiff/file') as src:
-#     data = src.read()
-#     profile = src.profile
+# # Apri l'immagine con rasterio
+# with rasterio.open(pre_fire_products) as src:
+#     image_array = src.read()
+
+# # Stampa le informazioni sull'array numpy
+# print("Shape:", image_array.shape)
+# print("Data type:", image_array.dtype)
+# print("Minimum value:", np.min(image_array))
+# print("Maximum value:", np.max(image_array))
+
+
+
+
+# download all results from the search
+# api.download_all(products)
+
+# convert to Pandas DataFrame
+# products_df = api.to_dataframe(products)
+
+# GeoJSON FeatureCollection containing footprints and metadata of the scenes
+# api.to_geojson(products)
+
+# GeoPandas GeoDataFrame with the metadata of the scenes and the footprints as geometries
+# api.to_geodataframe(products)
+
+# # Get the product's full metadata available on the server
+# api.get_product_odata(<product_id>, full=True)
