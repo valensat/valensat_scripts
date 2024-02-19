@@ -61,7 +61,7 @@ def Rswd(DEM, Lat, Trans, DOY, Time):
    """ Potential Radiation Equator model
    (c) O. van Dam, UU, Tropenbos-Guyana
    Version 5, June 2000
-   NOTE: Copyright: This program is free to use provided·
+   NOTE: Copyright: This program is free to use providedï¿½
          you refer to the manualfor citation.
          Do not distribute without prior approval of the author.
          Manual and additional info: O.vanDam@geog.uu.nl
@@ -587,7 +587,7 @@ Cp = 1005.0				# specific heat (J kg-1 K-1)
 eact = p_pbl * q_pbl * (Rv / Rd)	# actual vapour pressure
 rhoa = ps / (Rd * Theta_v)		# surface air density (kg m-3)
 rhoam = (ps / (Rd * Tsk)) * (1.0 - 0.378 * eact / ps) # moist air density (kg m-3)
-rhoacp = rhoa * Cp			# specific air heat capacity (J K-1 m­3)
+rhoacp = rhoa * Cp			# specific air heat capacity (J K-1 mï¿½3)
 alfa = 0.12
 beta = 125.0
 g = 9.81
