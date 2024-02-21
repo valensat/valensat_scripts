@@ -122,3 +122,54 @@ import glob
 #         mat_intensidad_max[fil][col] = 6
 
 
+########################################################################
+
+
+def contar_archivos_npy(directorio):
+    archivos_npy = glob.glob(f'{directorio}/*.npy', recursive=True)
+    return len(archivos_npy)
+
+year = '2023'
+
+for m in range(1, 12):
+    month = str(m+1).zfill(2)
+
+    directorio = 'E:/Heladas/matrices_tablas/{}/{}/'.format(year, month)
+    total_archivos_npy = contar_archivos_npy(directorio)
+    # mat_todo = np.zeros((58,41,total_archivos_npy))
+    mat_todo = []
+    dates_todo = []
+    for j in range(0,  total_archivos_npy):
+        day = str(j+1).zfill(2)
+        array_t = np.load('E:/Heladas/matrices_tablas/{}/{}/mat_1dia_{}.npy'.format(year, month, day))
+        df_t = pd.read_csv('E:/Heladas/matrices_tablas/{}/{}/mat_1dia_info_{}.csv'.format(year, month, day), header=None)
+        tabla_t = df_t[0].astype(str).values.tolist()
+
+        for i in range(0,  array_t.shape[-1]):
+            mat_todo.append(array_t[:,:,i])
+            dates_todo.append(str(tabla_t[i]))
+            pass
+        pass
+
+mat_todo_dim = np.zeros((58,41,len(mat_todo)))
+
+for i in range(0, len(mat_todo)):
+    mat_todo_dim[:,:,i] = mat_todo[i]
+
+heladas = mat_todo_dim <= 2.3
+heladas_01 = np.where(heladas, 1, 0)
+
+mat_sum_heladas_tot = np.zeros((heladas_01.shape[0],heladas_01.shape[1]))
+
+for fil in tqdm(range(0, heladas_01.shape[0])):
+    for col in range(0, heladas_01.shape[1]):
+        for dim in range(0, heladas_01.shape[-1]):
+
+            if heladas_01[fil, col, dim] == 1:
+                mat_sum_heladas_tot[fil, col] += 1
+
+            else:
+                pass
+
+
+np.save('E:/Heladas/matrices_tablas/{}/mat_veces_heladas_{}.npy'.format(year, year), mat_sum_heladas_tot)
